@@ -1,6 +1,5 @@
 #include "controller.hpp"
 
-
 void DockingController::docking_state_manager()
 {
     if (docking_state == "start")
@@ -30,130 +29,103 @@ void DockingController::docking_state_manager()
     }
 }
 
-void DockingController::action_state_manager()
-{
-    if (action_state == "jogging")
-    {
-        
-    }
-
-    if (action_state == "turning")
-    {
-        
-    }
-
-}
-
-void DockingController::docking_test()
-{
-    run();
-
-    //RCLCPP_INFO(get_logger(),"x position: %f", abs(tag_x));
-    if (!ready_last_pose)
-    {
-        return;
-    }
-
-    // TODO: Change position values after camera calibration
-    if (abs(tag_x) < 3.0)
-    {
-        set_docking_state("docked");
-    }
-
-    else if (abs(tag_x) < 6.0)
-    {
-        set_docking_state("final_approach");
-    }
-
-    else if (abs(tag_x) > 9.0)
-    {
-        set_docking_state("approach");
-    }
-
-    ready_last_pose = false;
-}
-
 /*** Docking State Functions ***/
 void DockingController::searching_state_func()
 {
-    if (!ready_last_pose)
+    if (!ready_tag_pose)
     {
+        turtlebot_turn_velocity(vel_angular);
         return;
     }
 
-    // TODO: Change position values after camera calibration
-    if (abs(tag_x) < 3.0)
+    turtlebot_stop();
+
+    // Get a good tag estimation
+    if (tag_counter < 4)
     {
-        set_docking_state("docked");
+        RCLCPP_INFO_ONCE(get_logger(),"tag_x position: %f", tag_x);
+        RCLCPP_INFO_ONCE(get_logger(),"tag_y position: %f", tag_y);
+        return;
     }
 
-    else if (abs(tag_x) < 6.0)
-    {
-        set_docking_state("final_approach");
-    }
+    approach_goal_pose.position.x = tag_x - 1.0;
+    approach_goal_pose.position.y = tag_y;
+    RCLCPP_INFO(get_logger(), "approach_goal x: %f", approach_goal_pose.position.x);
+    RCLCPP_INFO(get_logger(), "approach_goal y: %f", approach_goal_pose.position.y);
 
-    else if (abs(tag_x) > 9.0)
-    {
-        set_docking_state("approach");
-    }
+    final_approach_goal_pose.position.x = tag_x - 0.65;
+    final_approach_goal_pose.position.y = tag_y;
+    RCLCPP_INFO(get_logger(), "final_approach_goal x: %f", final_approach_goal_pose.position.x);
+    RCLCPP_INFO(get_logger(), "final_approach_goal y: %f", final_approach_goal_pose.position.y);
 
-    ready_last_pose = false;
+    set_docking_state("approach");
+
+    ready_tag_pose = false;
 }
 
 void DockingController::approach_state_func()
 {
-    turtlebot_forward(0.2);
-
-    if (!ready_last_pose)
+    if (!ready_turtle_pose)
     {
         return;
     }
 
-    // TODO: Change position values after camera calibration
-    if (abs(tag_x) < 3.0)
-    {
-        set_docking_state("docked");
-    }
+    // RCLCPP_INFO(get_logger(), "approach_distance goal: %f", distance(approach_goal_pose));
 
-    else if (abs(tag_x) < 6.0)
+    if (distance(approach_goal_pose) >= approach_distance_tolerance)
     {
+        vel_msg.linear.x = linear_velocity(approach_goal_pose);
+        vel_msg.linear.y = 0.0;
+        vel_msg.linear.z = 0.0;
+
+        vel_msg.angular.x = 0.0;
+        vel_msg.angular.y = 0.0;
+        vel_msg.angular.z = angular_velocity(approach_goal_pose);
+
+        vel_publisher->publish(vel_msg);
+    }
+    else
+    {
+        turtlebot_stop();
         set_docking_state("final_approach");
     }
 
-    else if (abs(tag_x) > 9.0)
-    {
-        set_docking_state("approach");
-    }
-
-    ready_last_pose = false;
+    ready_turtle_pose = false;
+    ready_tag_pose = false;
 }
 
 void DockingController::final_approach_state_func()
 {
-    turtlebot_forward(0.1);
-
-    if (!ready_last_pose)
+    if (!ready_turtle_pose)
     {
         return;
     }
-
-    // TODO: Change position values after camera calibration
-    if (abs(tag_x) < 3.0)
+    
+    if (abs(turtle_theta) >= angle_tolerance)
     {
-        set_docking_state("docked");
+        RCLCPP_INFO(get_logger(),"robot theta position: %f", turtle_theta);
+        
+        vel_msg.angular.z = 4.0 * (steering_angle(final_approach_goal_pose) );
+        vel_publisher->publish(vel_msg);
+    }
+    else
+    {
+        // RCLCPP_INFO(get_logger(), "final_fapproach_distance goal: %f", distance(final_approach_goal_pose));
+
+        if (distance(final_approach_goal_pose) >= final_approach_distance_tolerance)
+        {
+            vel_msg.angular.z = 0;
+            vel_msg.linear.x = 0.1;
+            vel_publisher->publish(vel_msg);
+        }
+        else
+        {
+            set_docking_state("docked");
+        }
     }
 
-    else if (abs(tag_x) < 6.0)
-    {
-        set_docking_state("final_approach");
-    }
-
-    else if (abs(tag_x) > 9.0)
-    {
-        set_docking_state("approach");
-    }
-
-    ready_last_pose = false;
+    ready_turtle_pose = false;
+    ready_tag_pose = false;
 }
 
 void DockingController::docked_state_func()
@@ -163,97 +135,105 @@ void DockingController::docked_state_func()
     gazebo_charge_battery_client();
 }
 
+/*** Calculation Functions ***/
+double DockingController::distance(geometry_msgs::msg::Pose goal_pose)
+{
+    return sqrt(pow((goal_pose.position.x - turtle_x), 2) +
+                pow((goal_pose.position.y - turtle_y), 2));
+}
+
+double DockingController::linear_velocity(geometry_msgs::msg::Pose goal_pose)
+{
+    return 0.5 * distance(goal_pose);
+}
+
+double DockingController::angular_velocity(geometry_msgs::msg::Pose goal_pose)
+{
+    return 6.0 * (steering_angle(goal_pose) - turtle_theta);
+}
+
+double DockingController::steering_angle(geometry_msgs::msg::Pose goal_pose)
+{
+    return atan2(goal_pose.position.y - turtle_y, goal_pose.position.x - turtle_x);
+}
+
 /*** Turtlebot3 Movement Functions ***/
 void DockingController::turtlebot_stop()
 {
-    cmd_vel_msg.linear.x = 0;
-    cmd_vel_msg.angular.z = 0;
+    vel_msg.linear.x = 0;
+    vel_msg.angular.z = 0;
 
-    vel_publisher->publish(cmd_vel_msg);
+    vel_publisher->publish(vel_msg);
 }
 
 void DockingController::turtlebot_move(double velocity, double radians)
 {
-    cmd_vel_msg.linear.x = velocity;
-    cmd_vel_msg.angular.z = radians;
+    vel_msg.linear.x = velocity;
+    vel_msg.angular.z = radians;
 
-    vel_publisher->publish(cmd_vel_msg);
+    vel_publisher->publish(vel_msg);
 }
 
 void DockingController::turtlebot_turn(double radians)
 {
-    cmd_vel_msg.angular.z = radians;
+    // double time = radians / vel_angular; // time
 
-    vel_publisher->publish(cmd_vel_msg);
+    // if (tag_y < 0)
+    // {
+    //     vel_msg.angular.z = vel_angular;
+    // }
+    // else
+    // {
+    //     vel_msg.angular.z = -vel_angular;
+    // }
+    vel_msg.angular.z = radians;
+
+    vel_publisher->publish(vel_msg);
+}
+
+void DockingController::turtlebot_turn_velocity(double angular_velocity)
+{
+    vel_msg.linear.x = 0;
+    vel_msg.angular.z = angular_velocity;
+
+    vel_publisher->publish(vel_msg);
 }
 
 void DockingController::turtlebot_forward(double velocity)
 {
-    cmd_vel_msg.linear.x = velocity;
-    cmd_vel_msg.angular.z = 0;
+    vel_msg.linear.x = velocity;
+    vel_msg.angular.z = 0;
 
-    vel_publisher->publish(cmd_vel_msg);
+    vel_publisher->publish(vel_msg);
 }
 
 /*** Set & Get Functions ***/
 void DockingController::set_docking_state(std::string new_docking_state)
 {
-    
+
     if (docking_state != new_docking_state)
     {
         last_docking_state = docking_state;
         docking_state = new_docking_state;
-        RCLCPP_INFO(get_logger(),"Docking state: %s, Last state: %s", docking_state.c_str(), last_docking_state.c_str());
+        RCLCPP_INFO(get_logger(), "Docking state: %s, Last state: %s", docking_state.c_str(), last_docking_state.c_str());
     }
 }
 
-void DockingController::set_action_state(std::string new_action_state)
+void DockingController::get_last_tag_pose()
 {
-    if (action_state != new_action_state)
+    if (ready_tag_pose)
     {
-        last_action_state = action_state;
-        action_state = new_action_state;
-        RCLCPP_INFO(get_logger(),"Action state: %s, Last state: %s", action_state.c_str(), last_action_state.c_str());
+
+        ready_tag_pose = false;     // Wait for next AprilTag Pose
+
     }
-}
-
-void DockingController::get_last_pose()
-{
-    if (ready_pose)
-    {
-        tf2::Quaternion q(
-            last_pose.orientation.x,
-            last_pose.orientation.y,
-            last_pose.orientation.z,
-            last_pose.orientation.w
-        );
-        q.normalize();
-            
-        tf2::Matrix3x3 m(q);
-        
-        double roll, pitch, yaw;
-        m.getRPY(roll,pitch,yaw);
-        
-        tag_x = last_pose.position.x;
-        tag_y = last_pose.position.y;
-        tag_yaw = yaw;
-
-        // RCLCPP_INFO(get_logger(),"x position: %f", abs(tag_x));
-        // RCLCPP_INFO(get_logger(),"y position: %f", abs(tag_y));
-        // RCLCPP_INFO(get_logger(),"yaw position: %f", abs(tag_yaw));
-
-        ready_pose = false;     // Wait for next AprilTag Pose
-        ready_last_pose = true; // Last AprilTag pose ready
-    }
-
 }
 
 void DockingController::publish_state()
 {
     docking_interfaces::msg::CurrentState current_state;
-    
+
     current_state.docking_state = docking_state;
-    current_state.action_state = action_state;
     state_publisher->publish(current_state);
 }
 
@@ -279,27 +259,21 @@ void DockingController::gazebo_charge_battery_client()
     {
         RCLCPP_ERROR(this->get_logger(), "Service call failed");
     }
-
-    
 }
-
-
 
 /*** Main Run Function ***/
 void DockingController::run()
 {
-    get_last_pose();            // Get last pose of AprilTag
-    docking_state_manager();    // Manage docking states
-    action_state_manager();     // Manage action states
-    publish_state();            // Publish state to /current_state topic
+    // get_last_tag_pose();     // Get last pose of AprilTag
+    docking_state_manager(); // Manage docking states
+    publish_state();         // Publish state to /current_state topic
 }
-
 
 int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<DockingController>(); 
-    
+    auto node = std::make_shared<DockingController>();
+
     rclcpp::Rate rate(30.0);
 
     node->set_docking_state("");
@@ -308,7 +282,7 @@ int main(int argc, char **argv)
     {
         node->run();
         rclcpp::spin_some(node);
-        //rclcpp::spin(node);
+        // rclcpp::spin(node);
         rate.sleep();
     }
 

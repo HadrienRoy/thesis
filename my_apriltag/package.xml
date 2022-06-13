@@ -7,17 +7,18 @@
   <maintainer email="hadrien@todo.todo">hadrien</maintainer>
   <license>TODO: License declaration</license>
 
-  <build_depend>eigen</build_depend>
+  <!-- <build_depend>eigen</build_depend> -->
 
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
-  <depend>apriltag_msgs</depend>
-  <depend>apriltag</depend>
   <depend>tf2_msgs</depend>
+  <depend>tf2_ros</depend>
   <depend>image_transport</depend>
   <depend>cv_bridge</depend>
   <depend>geometry_msgs</depend>
+  <depend>opencv2</depend>
 
+  <depend>my_robot_interfaces</depend>
   
 
   <test_depend>ament_copyright</test_depend>

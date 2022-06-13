@@ -16,6 +16,7 @@ class DockingClient : public rclcpp::Node
         DockingClient() : Node("docking_client")
         {
             /*** PARAMETERS ***/
+            bool stop = false;
 
             /*** PUBLISHER DEFINITIONS***/
             start_docking_publisher = this->create_publisher<docking_interfaces::msg::StartDocking>(
@@ -39,8 +40,8 @@ class DockingClient : public rclcpp::Node
                 RCLCPP_WARN(this->get_logger(), "Waiting for the server to be up...");
             }
 
-            std::string docking_request = this->declare_parameter("docking_request", "start");
-            //std::string docking_request =  "start";
+            //std::string docking_request = this->declare_parameter("docking_request", "start");
+            std::string docking_request =  "start";
 
             auto request = std::make_shared<docking_interfaces::srv::Docking::Request>();
             request->service = docking_request;
@@ -51,6 +52,7 @@ class DockingClient : public rclcpp::Node
             {
                 auto response = future.get();
                 RCLCPP_INFO(this->get_logger(), "Docking service request (docking:=%s) successful.", docking_request.c_str());
+                // rclcpp::shutdown();
             }
             catch (const std::exception &e)
             {
@@ -61,6 +63,8 @@ class DockingClient : public rclcpp::Node
     private:
         /*** VARIABLES ***/
         std::thread thread1;
+
+        
 
         /*** INTERFACES ***/
         sensor_msgs::msg::BatteryState last_battery_state;
@@ -83,14 +87,11 @@ class DockingClient : public rclcpp::Node
             // TODO: check battery charge left and needed to get to dock
             if (battery_charge < 1.0)
             {
-                start_docking_msg.start_docking_controller = true;
-                start_docking_msg.start_apriltag_detection = true;
-                
-                // thread1 = std::thread(std::bind(&DockingClient::callDockingService, this));
-                // thread1.detach();
+                thread1 = std::thread(std::bind(&DockingClient::callDockingService, this));
+                thread1.detach();
+                return;
             }
-            start_docking_publisher->publish(start_docking_msg);
-            // TODO: check docking states of other robots 
+
         }
 };
 
