@@ -1,15 +1,15 @@
 # thesis: Multiple autonomous robot docking
 
-THIS PROJECT IS NOT FINISHED
+THIS PROJECT IS ONGOING.
 
-This repository holds the code for my thesis project.
+The goal for this project is to be able to dock multiple Turtlebot3 robots autonomously with only one docking station by comparing charging needs.
+
+It leverages ROS2 Foxy and the Pupil Labs apriltag package.
+
+Current progress: Single Turtlebot3 apriltag docking.
 
 
-
-The goal for this project is to be able to dock multiple Turtlebot3 robots autonomously when there is only one docking station. 
-
-I use the Pupil Labs AprilTag library.
-This docking controller is based off of https://github.com/Adlink-ROS/apriltag_docking.
+The docking manager is inspired from https://github.com/Adlink-ROS/apriltag_docking.
 
 ## Quickstart
 
@@ -29,8 +29,18 @@ Launch the gazebo simulator and fake battery node
 ```sh
 ros2 launch my_simulations my_world.py
 ```
-
 Launch the docking controller and docking client
 ```sh
 ros2 launch my_robot_bringup docking_controller.launch.py
 ```
+Launch the docking client
+```sh
+ros2 launch my_robot_bringup docking_controller.launch.py
+```
+
+Move the robot manually using teleop to starting position
+```sh
+ros2 run turtlebot3_teleop teleop_keyboard
+```
+
+In the current battery configuration, the robot will be triggered to start docking after 1 minute. To extend this time, change the inequality in docking_client.cpp. The battery percentage will drop by 0.1 every minute for reference.
