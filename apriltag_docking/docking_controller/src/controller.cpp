@@ -101,11 +101,28 @@ void DockingController::final_approach_state_func()
         return;
     }
     
-    if (abs(turtle_theta) >= angle_tolerance)
-    {
-        RCLCPP_INFO(get_logger(),"robot theta position: %f", turtle_theta);
+
+    // if (abs(turtle_theta) >= angle_tolerance)
+    // {
+        // RCLCPP_INFO(get_logger(),"robot theta position: %f", turtle_theta);
+
+        // if((steering_angle(final_approach_goal_pose)) < 0)
+        // {
+        //     vel_msg.angular.z = 0.2;
+        // }
+        // else
+        // {
+        //     vel_msg.angular.z = -0.2;
+        // }
         
-        vel_msg.angular.z = 4.0 * (steering_angle(final_approach_goal_pose) );
+    //     vel_publisher->publish(vel_msg);
+    // }
+
+    if (abs(steering_angle(final_approach_goal_pose) - turtle_theta) >= angle_tolerance)
+    {
+        // RCLCPP_INFO(get_logger(),"robot theta position: %f", turtle_theta);
+        
+        vel_msg.angular.z = 2.5 * (steering_angle(final_approach_goal_pose)-turtle_theta);
         vel_publisher->publish(vel_msg);
     }
     else
@@ -120,6 +137,7 @@ void DockingController::final_approach_state_func()
         }
         else
         {
+            turtlebot_stop();
             set_docking_state("docked");
         }
     }
@@ -133,6 +151,8 @@ void DockingController::docked_state_func()
     turtlebot_stop();
 
     gazebo_charge_battery_client();
+
+    start_tag_detection = false;
 }
 
 /*** Calculation Functions ***/

@@ -21,6 +21,7 @@ set(msg_files
 
 set(srv_files
   "srv/Docking.srv"
+  "srv/StartAprilTagDetection.srv"
   "srv/GazeboChargeBattery.srv"
 )
 

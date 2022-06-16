@@ -10,7 +10,6 @@
 // #include "apriltag_msgs/msg/april_tag_detection_array.hpp"
 
 #include "docking_interfaces/msg/current_state.hpp"
-#include "docking_interfaces/msg/start_docking.hpp"
 #include "docking_interfaces/srv/docking.hpp"
 #include "docking_interfaces/srv/gazebo_charge_battery.hpp"
 
@@ -53,7 +52,7 @@ public:
         this->get_parameter("approach_distance_tolerance", approach_distance_tolerance);
         this->declare_parameter<double>("final_approach_distance_tolerance", 0.1);
         this->get_parameter("final_approach_distance_tolerance", final_approach_distance_tolerance);
-        this->declare_parameter<double>("angle_tolerance", 0.03);
+        this->declare_parameter<double>("angle_tolerance", 0.02);
         this->get_parameter("angle_tolerance", angle_tolerance);
 
         /*** Define Publishers & Services ***/
@@ -100,6 +99,7 @@ private:
     // Has tag been detected and information extracted
     bool ready_tag_pose = false;
     bool ready_turtle_pose = false;
+    bool start_tag_detection = false;
 
     // Used for calculating turning angle
     double approach_angle;
@@ -114,7 +114,6 @@ private:
 
     // PID
     double kp = 0.5;
-    double kp_angle = 0.1;
 
     int tag_counter = 0;
 
@@ -214,29 +213,36 @@ private:
 
     void on_tf_timer()
     {
-        geometry_msgs::msg::TransformStamped transformStamped;
-
-        std::string fromFrameRel = "tag_36h11_00408";
-        std::string toFrameRel = "odom";
-        try
+        if (start_tag_detection)
         {
-            transformStamped = tf_buffer->lookupTransform(
-                toFrameRel, fromFrameRel,
-                tf2::TimePointZero);
+            geometry_msgs::msg::TransformStamped transformStamped;
 
-                tag_counter += 1;
-        }
-        catch (tf2::TransformException &ex)
-        {
-            RCLCPP_INFO(
-                this->get_logger(), "Could not transform %s to %s: %s",
-                toFrameRel.c_str(), fromFrameRel.c_str(), ex.what());
-            return;
-        }
+            std::string fromFrameRel = "tag_36h11_00408";
+            std::string toFrameRel = "odom";
+            try
+            {
+                transformStamped = tf_buffer->lookupTransform(
+                    toFrameRel, fromFrameRel,
+                    tf2::TimePointZero);
 
-        tag_x = transformStamped.transform.translation.x;
-        tag_y = transformStamped.transform.translation.y;
+                    tag_counter += 1;
+            }
+            catch (tf2::TransformException &ex)
+            {
+                RCLCPP_INFO(
+                    this->get_logger(), "Could not transform %s to %s: %s",
+                    toFrameRel.c_str(), fromFrameRel.c_str(), ex.what());
+                return;
+            }
+
+            tag_x = transformStamped.transform.translation.x;
+            tag_y = transformStamped.transform.translation.y;
+
+            // RCLCPP_INFO_ONCE(get_logger(),"tag_x timer position: %f", tag_x);
+            // RCLCPP_INFO_ONCE(get_logger(),"tag_y timer position: %f", tag_y);
+            
+            ready_tag_pose = true;
+        }
         
-        ready_tag_pose = true;
     }
 };

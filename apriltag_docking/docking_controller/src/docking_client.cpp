@@ -1,8 +1,8 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "docking_interfaces/msg/current_state.hpp"
-#include "docking_interfaces/msg/start_docking.hpp"
 #include "docking_interfaces/srv/docking.hpp"
+#include "docking_interfaces/srv/start_april_tag_detection.hpp"
 
 #include "sensor_msgs/msg/battery_state.hpp"
 
@@ -15,21 +15,38 @@ class DockingClient : public rclcpp::Node
     public:
         DockingClient() : Node("docking_client")
         {
-            /*** PARAMETERS ***/
-            bool stop = false;
-
-            /*** PUBLISHER DEFINITIONS***/
-            start_docking_publisher = this->create_publisher<docking_interfaces::msg::StartDocking>(
-                "start_docking", 10
-            );
-
             /*** SUBSCRIBERS DEFINITIONS***/
             battery_subscriber = this->create_subscription<sensor_msgs::msg::BatteryState>(
                 "gazebo_battery_state/battery_state", 10, std::bind(&DockingClient::callbackBattery, this, _1)
             );
 
-
             RCLCPP_INFO(this->get_logger(), "Docking Client has been started.");
+        }
+
+        void callAprilTagDetectionService()
+        {
+            auto client = this->create_client<docking_interfaces::srv::StartAprilTagDetection>("detect_apriltag_pupil/start_apriltag_detection");
+            while (!client->wait_for_service(std::chrono::seconds(1)))
+            {
+                RCLCPP_WARN(this->get_logger(), "Waiting for the apriltag detection server to be up...");
+            }
+
+            std::string tag_request =  "start";
+
+            auto request = std::make_shared<docking_interfaces::srv::StartAprilTagDetection::Request>();
+            request->service = tag_request;
+
+            auto future = client->async_send_request(request);
+
+            try
+            {
+                auto response = future.get();
+                RCLCPP_INFO(this->get_logger(), "AprilTag detection service request (docking:=%s) successful.", tag_request.c_str());
+            }
+            catch (const std::exception &e)
+            {
+                RCLCPP_INFO(this->get_logger(), "AprilTag detection service request (docking:=%s) failed.", tag_request.c_str());
+            }
         }
 
         void callDockingService()
@@ -52,7 +69,6 @@ class DockingClient : public rclcpp::Node
             {
                 auto response = future.get();
                 RCLCPP_INFO(this->get_logger(), "Docking service request (docking:=%s) successful.", docking_request.c_str());
-                // rclcpp::shutdown();
             }
             catch (const std::exception &e)
             {
@@ -60,19 +76,16 @@ class DockingClient : public rclcpp::Node
             }
         }
 
+       bool stop_client = false;
+
     private:
         /*** VARIABLES ***/
-        std::thread thread1;
-
-        
+        std::thread thread_dock;
+        std::thread thread_tag;
 
         /*** INTERFACES ***/
         sensor_msgs::msg::BatteryState last_battery_state;
         float battery_charge;
-        docking_interfaces::msg::StartDocking start_docking_msg;
-
-        /*** PUBLISHER DECLARATIONS***/
-        rclcpp::Publisher<docking_interfaces::msg::StartDocking>::SharedPtr start_docking_publisher;
 
         /*** SUBSCRIBERS DECLARATIONS***/
         rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery_subscriber;
@@ -85,13 +98,23 @@ class DockingClient : public rclcpp::Node
 
             // Determine if charge is needed
             // TODO: check battery charge left and needed to get to dock
-            if (battery_charge < 1.0)
+   
+            if (battery_charge < 0.9)
             {
-                thread1 = std::thread(std::bind(&DockingClient::callDockingService, this));
-                thread1.detach();
-                return;
-            }
+                if (!stop_client)
+                {
+                    RCLCPP_INFO(this->get_logger(), "Charging Required.");
 
+                    thread_tag = std::thread(std::bind(&DockingClient::callAprilTagDetectionService, this));
+                    thread_dock = std::thread(std::bind(&DockingClient::callDockingService, this));
+                    
+                    thread_tag.detach();
+                    thread_dock.detach();
+
+                    stop_client = true;
+                }
+            }
+            
         }
 };
 

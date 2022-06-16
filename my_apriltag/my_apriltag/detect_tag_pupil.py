@@ -31,8 +31,10 @@ from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Pose
 from geometry_msgs.msg import TransformStamped
 
-from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
+from docking_interfaces.srv import StartAprilTagDetection, Docking
 
+
+from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
 
 
 class DetectTagPupilNode(Node):
@@ -47,12 +49,17 @@ class DetectTagPupilNode(Node):
         self.detections_publisher = self.create_publisher(
             Pose, "detections", 10)
 
+        self.start_tag_detection_service = self.create_service(
+            StartAprilTagDetection, 'detect_apriltag_pupil/start_apriltag_detection', self.start_apriltag_detection_server)
+
         # Initialize the transform broadcaster
         # self.br = TransformBroadcaster(self)
         self.br = StaticTransformBroadcaster(self)
 
         # Create the cv_bridge object
         self.bridge = CvBridge()
+
+        self.start_tag_detection = False
 
         # Camera parameters, {fx, fy}: focal length (px), {cx, cy}: focal center (px)
         self.fx = 530.4669406576809
@@ -64,15 +71,25 @@ class DetectTagPupilNode(Node):
 
         # Define AprilTag detector
         self.detector = pupil_apriltags.Detector(families='tag36h11',
-                                            nthreads=1,
-                                            quad_decimate=1.0,
-                                            quad_sigma=0.0,
-                                            refine_edges=1,
-                                            decode_sharpening=0.25,
-                                            debug=0)
+                                                 nthreads=1,
+                                                 quad_decimate=1.0,
+                                                 quad_sigma=0.0,
+                                                 refine_edges=1,
+                                                 decode_sharpening=0.25,
+                                                 debug=0)
 
-        self.get_logger().info("Detect AprilTag Node has been started.")
+        self.get_logger().info("AprilTag Detection Node has been started.")
 
+    
+    def start_apriltag_detection_server(self, request, response):
+        if request.service == 'start':
+            self.start_tag_detection = True
+
+        response.success = True
+
+        return response
+    
+    
     def callback_image(self, msg):
         self.counter += 1
         if self.counter % 25 == 0:
@@ -95,70 +112,69 @@ class DetectTagPupilNode(Node):
                 self.publish_detections_data(detections)
 
     def publish_detections_data(self, detections):
-        detections_msg = Pose()
+        if (self.start_tag_detection):
+            detections_msg = Pose()
 
-        mat = Matrix()
-        mat[0][0] = detections[0].pose_R[0, 0]
-        mat[0][1] = detections[0].pose_R[0, 1]
-        mat[0][2] = detections[0].pose_R[0, 2]
-        mat[1][0] = detections[0].pose_R[1, 0]
-        mat[1][1] = detections[0].pose_R[1, 1]
-        mat[1][2] = detections[0].pose_R[1, 2]
-        mat[2][0] = detections[0].pose_R[2, 0]
-        mat[2][1] = detections[0].pose_R[2, 1]
-        mat[2][2] = detections[0].pose_R[2, 2]
-        q = mat.to_quaternion()
-        q.normalize()
+            mat = Matrix()
+            mat[0][0] = detections[0].pose_R[0, 0]
+            mat[0][1] = detections[0].pose_R[0, 1]
+            mat[0][2] = detections[0].pose_R[0, 2]
+            mat[1][0] = detections[0].pose_R[1, 0]
+            mat[1][1] = detections[0].pose_R[1, 1]
+            mat[1][2] = detections[0].pose_R[1, 2]
+            mat[2][0] = detections[0].pose_R[2, 0]
+            mat[2][1] = detections[0].pose_R[2, 1]
+            mat[2][2] = detections[0].pose_R[2, 2]
+            q = mat.to_quaternion()
+            q.normalize()
 
-        # q0=qw, q1=qx, q2=qy, q3=qz
-        # detections_msg.orientation.w = q[0]
-        # detections_msg.orientation.x = q[1]
-        # detections_msg.orientation.y = q[2]
-        # detections_msg.orientation.z = q[3]
+            # q0=qw, q1=qx, q2=qy, q3=qz
+            # detections_msg.orientation.w = q[0]
+            # detections_msg.orientation.x = q[1]
+            # detections_msg.orientation.y = q[2]
+            # detections_msg.orientation.z = q[3]
 
-        # detections_msg.position.x = detections[0].pose_t[0, 0]
-        # detections_msg.position.y = detections[0].pose_t[1, 0]
-        # detections_msg.position.z = detections[0].pose_t[2, 0]
+            # detections_msg.position.x = detections[0].pose_t[0, 0]
+            # detections_msg.position.y = detections[0].pose_t[1, 0]
+            # detections_msg.position.z = detections[0].pose_t[2, 0]
 
-        # # Send the pose of the detected tag
-        # self.detections_publisher.publish(detections_msg) 
+            # # Send the pose of the detected tag
+            # self.detections_publisher.publish(detections_msg)
 
-        # tag_detection = AprilTagDetection()
-        # tag_detection_array = AprilTagDetectionArray()
-        
-        # tag_detection.id = detections[0].tag_id
-        # tag_detection.size = self.tag_size
-        # tag_detection.pose.position.x = detections[0].pose_t[0, 0]
-        # tag_detection.pose.position.y = detections[0].pose_t[1, 0]
-        # tag_detection.pose.position.z = detections[0].pose_t[2, 0]
-        # tag_detection.orientation.w = q[0]
-        # tag_detection.orientation.x = q[1]
-        # tag_detection.orientation.y = q[2]
-        # tag_detection.orientation.z = q[3]
+            # tag_detection = AprilTagDetection()
+            # tag_detection_array = AprilTagDetectionArray()
 
-        # tag_detection_array.detections.push_back(tag_detection)
+            # tag_detection.id = detections[0].tag_id
+            # tag_detection.size = self.tag_size
+            # tag_detection.pose.position.x = detections[0].pose_t[0, 0]
+            # tag_detection.pose.position.y = detections[0].pose_t[1, 0]
+            # tag_detection.pose.position.z = detections[0].pose_t[2, 0]
+            # tag_detection.orientation.w = q[0]
+            # tag_detection.orientation.x = q[1]
+            # tag_detection.orientation.y = q[2]
+            # tag_detection.orientation.z = q[3]
 
-        t = TransformStamped()
+            # tag_detection_array.detections.push_back(tag_detection)
 
-        # corresponding tf variables
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'camera_rgb_optical_frame'
-        t.child_frame_id = "tag_36h11_00408"
+            t = TransformStamped()
 
-        t.transform.translation.x = detections[0].pose_t[0, 0]
-        t.transform.translation.y = detections[0].pose_t[1, 0]
-        t.transform.translation.z = detections[0].pose_t[2, 0]
+            # corresponding tf variables
+            t.header.stamp = self.get_clock().now().to_msg()
+            t.header.frame_id = 'camera_rgb_optical_frame'
+            t.child_frame_id = "tag_36h11_00408"
 
-        # q0=qw, q1=qx, q2=qy, q3=qz
-        t.transform.rotation.w = q[0]
-        t.transform.rotation.x = q[1]
-        t.transform.rotation.y = q[2]
-        t.transform.rotation.z = q[3]
-        
-        # Send the transformation
-        self.br.sendTransform(t)
+            t.transform.translation.x = detections[0].pose_t[0, 0]
+            t.transform.translation.y = detections[0].pose_t[1, 0]
+            t.transform.translation.z = detections[0].pose_t[2, 0]
 
-        
+            # q0=qw, q1=qx, q2=qy, q3=qz
+            t.transform.rotation.w = q[0]
+            t.transform.rotation.x = q[1]
+            t.transform.rotation.y = q[2]
+            t.transform.rotation.z = q[3]
+
+            # Send the transformation
+            self.br.sendTransform(t)
 
 
 def main(args=None):
@@ -170,7 +186,3 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
-
-
-        
-

@@ -11,6 +11,8 @@ void DockingController::docking_server(
         RCLCPP_INFO(this->get_logger(), "Docking started");
         set_docking_state("start");
         response->success = true;
+        
+        start_tag_detection = true;
     } 
     else if (request->service == "cancel") 
     {
